@@ -1,0 +1,23 @@
+{
+  "grades": {
+    "Ст3": {
+      "1.0": { "price_meter": 20.0, "price_pierce": 1.8, "material_m2": 740.0 },
+      "2.0": { "price_meter": 24.0, "price_pierce": 2.2, "material_m2": 920.0 },
+      "3.0": { "price_meter": 28.0, "price_pierce": 2.7, "material_m2": 1150.0 },
+      "4.0": { "price_meter": 34.0, "price_pierce": 3.2, "material_m2": 1420.0 },
+      "6.0": { "price_meter": 44.0, "price_pierce": 4.2, "material_m2": 2060.0 }
+    },
+    "Нерж AISI 304": {
+      "1.0": { "price_meter": 34.0, "price_pierce": 2.7, "material_m2": 1780.0 },
+      "2.0": { "price_meter": 42.0, "price_pierce": 3.6, "material_m2": 2460.0 },
+      "3.0": { "price_meter": 55.0, "price_pierce": 4.8, "material_m2": 3380.0 },
+      "4.0": { "price_meter": 72.0, "price_pierce": 6.2, "material_m2": 4310.0 }
+    },
+    "Алюминий AMg": {
+      "2.0": { "price_meter": 38.0, "price_pierce": 3.1, "material_m2": 1670.0 },
+      "3.0": { "price_meter": 46.0, "price_pierce": 3.9, "material_m2": 2140.0 },
+      "4.0": { "price_meter": 59.0, "price_pierce": 5.0, "material_m2": 2790.0 },
+      "6.0": { "price_meter": 79.0, "price_pierce": 6.6, "material_m2": 4020.0 }
+    }
+  }
+}

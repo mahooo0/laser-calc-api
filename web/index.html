@@ -1,0 +1,663 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DXF Laser Calculator</title>
+  <style>
+    :root {
+      --bg-top: #f9f6ef;
+      --bg-mid: #eef2f6;
+      --panel: #ffffff;
+      --ink: #1d2733;
+      --muted: #596779;
+      --line: #d6dde6;
+      --accent: #1f7a8c;
+      --accent-soft: #d9eff3;
+      --ok: #157f3d;
+      --warn: #b8741a;
+      --radius: 18px;
+      --shadow: 0 18px 45px rgba(20, 38, 55, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Space Grotesk", "Segoe UI", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(1400px 700px at 10% -20%, #f0d8ba 0%, transparent 60%),
+        radial-gradient(1000px 600px at 100% 0%, #cfe8ef 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-mid));
+      min-height: 100vh;
+      animation: fadeIn 0.45s ease;
+    }
+
+    .page {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 22px 18px 28px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .title {
+      font-size: clamp(24px, 3vw, 36px);
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      margin: 0;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 14px;
+      backdrop-filter: blur(6px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 16px 18px 10px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fbfdff, #f8fbff);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    .panel-body {
+      padding: 16px 18px 18px;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      border: 1px solid #cfd7e2;
+      border-radius: 12px;
+      padding: 10px 11px;
+      font-size: 14px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(31, 122, 140, 0.18);
+    }
+
+    .drop {
+      border: 2px dashed #b8c9d8;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f8fcff, #f4f8fc);
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform .15s, border-color .2s, background .2s;
+      margin-bottom: 10px;
+    }
+
+    .drop:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+      background: linear-gradient(180deg, #f2fbff, #eaf6fb);
+    }
+
+    .drop strong { display: block; font-size: 15px; margin-bottom: 4px; }
+    .drop span { color: var(--muted); font-size: 13px; }
+
+    .file-name {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      min-height: 18px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 0;
+      width: 100%;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #1f7a8c, #3fa3b1);
+      cursor: pointer;
+      transition: transform .12s, filter .2s;
+    }
+
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.03); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #fff, #f8fbff);
+      padding: 10px 11px;
+      min-height: 80px;
+    }
+
+    .metric .k {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin-bottom: 7px;
+      font-weight: 700;
+    }
+
+    .metric .v {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .metric .s {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric.total {
+      background: linear-gradient(150deg, #edf9f3, #dff4ea);
+      border-color: #b8dec9;
+    }
+
+    .canvas-wrap {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+      position: relative;
+      min-height: 430px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 430px;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(16, 42, 67, 0.02),
+        rgba(16, 42, 67, 0.02) 1px,
+        transparent 1px,
+        transparent 24px
+      );
+    }
+
+    .hint {
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      color: #6b7a8a;
+      font-size: 12px;
+      background: rgba(255, 255, 255, .82);
+      border: 1px solid #d5dfe8;
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+
+    .error {
+      margin-top: 10px;
+      border-radius: 12px;
+      border: 1px solid #e5c4bf;
+      background: #fff2f1;
+      color: #8f2d1f;
+      padding: 10px 12px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .ok {
+      margin-top: 10px;
+      border-radius: 12px;
+      border: 1px solid #bfe2cd;
+      background: #edf9f2;
+      color: var(--ok);
+      padding: 10px 12px;
+      font-size: 13px;
+      display: none;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      .results-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      canvas { height: 340px; }
+      .canvas-wrap { min-height: 340px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1 class="title">DXF Laser Cutting Calculator</h1>
+      </div>
+      <div id="status" class="status">Ready</div>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head">Параметры расчёта</div>
+        <div class="panel-body">
+          <input id="fileInput" type="file" accept=".dxf" hidden />
+          <div id="dropZone" class="drop">
+            <strong>Выбери DXF</strong>
+            <span>Нажми или перетащи файл сюда</span>
+          </div>
+          <div id="fileName" class="file-name">Файл не выбран</div>
+
+          <div class="field">
+            <label for="clientName">Имя клиента</label>
+            <input id="clientName" type="text" />
+          </div>
+          <div class="field">
+            <label for="companyName">Компания</label>
+            <input id="companyName" type="text" />
+          </div>
+          <div class="field">
+            <label for="phone">Телефон</label>
+            <input id="phone" type="text" value="+380" />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="text" placeholder="client@example.com" />
+          </div>
+
+          <div class="field">
+            <label for="metalGrade">Марка металла</label>
+            <select id="metalGrade"></select>
+          </div>
+          <div class="field">
+            <label for="metalThickness">Толщина металла, мм</label>
+            <select id="metalThickness"></select>
+          </div>
+          <div class="field">
+            <label for="quantity">Количество деталей</label>
+            <input id="quantity" type="text" value="1" />
+          </div>
+
+          <button id="calcBtn" class="btn">Рассчитать</button>
+
+          <div id="okBox" class="ok"></div>
+          <div id="errorBox" class="error"></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">Результат и предпросмотр детали</div>
+        <div class="panel-body">
+          <div class="results-grid">
+            <div class="metric">
+              <div class="k">Длина реза (партия)</div>
+              <div id="mCut" class="v">0.000 м</div>
+              <div id="mCut2" class="s">0.000 мм</div>
+            </div>
+            <div class="metric">
+              <div class="k">Пробивки (партия)</div>
+              <div id="mPierce" class="v">0</div>
+              <div class="s">по контурам</div>
+            </div>
+            <div class="metric">
+              <div class="k">Площадь (партия)</div>
+              <div id="mArea" class="v">0.000000 м²</div>
+              <div id="mArea2" class="s">0.000 мм²</div>
+            </div>
+            <div class="metric total">
+              <div class="k">Итого, грн</div>
+              <div id="mTotal" class="v">0.00 грн</div>
+            </div>
+          </div>
+
+          <div class="canvas-wrap">
+            <canvas id="preview"></canvas>
+            <div class="hint">Preview</div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileNameEl = document.getElementById('fileName');
+    const calcBtn = document.getElementById('calcBtn');
+    const errorBox = document.getElementById('errorBox');
+    const okBox = document.getElementById('okBox');
+    const canvas = document.getElementById('preview');
+    const ctx = canvas.getContext('2d');
+
+    const mCut = document.getElementById('mCut');
+    const mCut2 = document.getElementById('mCut2');
+    const mPierce = document.getElementById('mPierce');
+    const mArea = document.getElementById('mArea');
+    const mArea2 = document.getElementById('mArea2');
+    const mTotal = document.getElementById('mTotal');
+    const clientNameEl = document.getElementById('clientName');
+    const companyNameEl = document.getElementById('companyName');
+    const phoneEl = document.getElementById('phone');
+    const emailEl = document.getElementById('email');
+    const metalGradeEl = document.getElementById('metalGrade');
+    const metalThicknessEl = document.getElementById('metalThickness');
+    const quantityEl = document.getElementById('quantity');
+    const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:8080' : '';
+
+    let selectedFile = null;
+    let lastShapes = [];
+    let catalog = [];
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function apiUrl(path) {
+      return `${API_BASE}${path}`;
+    }
+
+    function showError(text) {
+      errorBox.style.display = 'block';
+      errorBox.textContent = text;
+      okBox.style.display = 'none';
+    }
+
+    function showOk(text) {
+      okBox.style.display = 'block';
+      okBox.textContent = text;
+      errorBox.style.display = 'none';
+    }
+
+    function clearNotice() {
+      okBox.style.display = 'none';
+      errorBox.style.display = 'none';
+    }
+
+    function normalizeNumber(text, fallback = 0) {
+      const value = Number(String(text).replace(',', '.'));
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function setSelectOptions(selectEl, values, formatter = (v) => v) {
+      selectEl.innerHTML = '';
+      for (const v of values) {
+        const option = document.createElement('option');
+        option.value = String(v);
+        option.textContent = formatter(v);
+        selectEl.appendChild(option);
+      }
+    }
+
+    function syncThicknesses() {
+      const selectedGrade = metalGradeEl.value;
+      const gradeEntry = catalog.find((x) => x.metal_grade === selectedGrade);
+      if (!gradeEntry) {
+        setSelectOptions(metalThicknessEl, []);
+        return;
+      }
+      setSelectOptions(metalThicknessEl, gradeEntry.thicknesses, (v) => `${v} мм`);
+    }
+
+    async function loadCatalog() {
+      try {
+        setStatus('Loading catalog...');
+        const res = await fetch(apiUrl('/api/catalog'));
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Catalog load failed');
+        catalog = Array.isArray(data.grades) ? data.grades : [];
+        if (catalog.length === 0) throw new Error('Catalog is empty');
+        setSelectOptions(metalGradeEl, catalog.map((x) => x.metal_grade));
+        syncThicknesses();
+        setStatus('Ready');
+      } catch (err) {
+        showError(`Ошибка загрузки справочника: ${err.message || err}. Проверь, что сервер запущен: http://127.0.0.1:8080`);
+        setStatus('Error');
+      }
+    }
+
+    function setFile(file) {
+      selectedFile = file;
+      fileNameEl.textContent = file ? `Файл: ${file.name}` : 'Файл не выбран';
+      clearNotice();
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) setFile(file);
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#1f7a8c';
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(evt => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#b8c9d8';
+      });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+    metalGradeEl.addEventListener('change', syncThicknesses);
+
+    function fitCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawPreview(shapes) {
+      fitCanvas();
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      if (!shapes || shapes.length === 0) {
+        ctx.fillStyle = '#6b7a8a';
+        ctx.font = '14px Space Grotesk, Segoe UI, sans-serif';
+        ctx.fillText('Нет данных для отображения', 14, 24);
+        return;
+      }
+
+      const xs = [];
+      const ys = [];
+      for (const shape of shapes) {
+        for (const p of shape.points) {
+          xs.push(p[0]);
+          ys.push(p[1]);
+        }
+      }
+
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      const pad = 22;
+      const dx = Math.max(maxX - minX, 1e-9);
+      const dy = Math.max(maxY - minY, 1e-9);
+      const scale = Math.max(Math.min((w - pad * 2) / dx, (h - pad * 2) / dy), 1e-9);
+
+      const drawW = dx * scale;
+      const drawH = dy * scale;
+      const ox = (w - drawW) / 2;
+      const oy = (h - drawH) / 2;
+
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = '#1f2937';
+
+      for (const shape of shapes) {
+        const pts = shape.points;
+        if (!pts || pts.length < 2) continue;
+
+        ctx.beginPath();
+        const [sx, sy] = pts[0];
+        ctx.moveTo(ox + (sx - minX) * scale, h - (oy + (sy - minY) * scale));
+
+        for (let i = 1; i < pts.length; i += 1) {
+          const [x, y] = pts[i];
+          ctx.lineTo(ox + (x - minX) * scale, h - (oy + (y - minY) * scale));
+        }
+
+        if (shape.closed) ctx.closePath();
+        ctx.stroke();
+      }
+    }
+
+    window.addEventListener('resize', () => drawPreview(lastShapes));
+
+    calcBtn.addEventListener('click', async () => {
+      clearNotice();
+
+      if (!selectedFile) {
+        showError('Сначала выбери DXF файл');
+        return;
+      }
+
+      const metalGrade = (metalGradeEl.value || '').trim();
+      const metalThickness = (metalThicknessEl.value || '').trim();
+      const quantityRaw = normalizeNumber(quantityEl.value, 1);
+      const quantity = Math.max(1, Math.floor(quantityRaw));
+      const clientName = (clientNameEl.value || '').trim();
+      const companyName = (companyNameEl.value || '').trim();
+      const phone = (phoneEl.value || '').trim();
+      const email = (emailEl.value || '').trim();
+      const tol = 0.05;
+      const layers = '';
+
+      if (!metalGrade || !metalThickness) {
+        showError('Выбери марку и толщину металла');
+        return;
+      }
+      if (!clientName && !companyName) {
+        showError('Укажи имя клиента или компанию');
+        return;
+      }
+      if (!phone) {
+        showError('Укажи телефон');
+        return;
+      }
+      if (!email) {
+        showError('Укажи email');
+        return;
+      }
+
+      const form = new FormData();
+      form.append('file', selectedFile, selectedFile.name);
+      form.append('tol', String(Math.max(tol, 0.001)));
+      form.append('layers', layers);
+      form.append('client_name', clientName);
+      form.append('company_name', companyName);
+      form.append('phone', phone);
+      form.append('email', email);
+      form.append('metal_grade', metalGrade);
+      form.append('metal_thickness', metalThickness);
+      form.append('quantity', String(quantity));
+
+      calcBtn.disabled = true;
+      setStatus('Calculating...');
+
+      try {
+        const res = await fetch(apiUrl('/api/calculate'), { method: 'POST', body: form });
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'Request failed');
+        }
+
+        const m = data.metrics;
+        const b = data.batch_metrics;
+
+        mCut.textContent = `${b.cut_length_m.toFixed(3)} м`;
+        mCut2.textContent = `${b.cut_length_mm.toFixed(3)} мм`;
+        mPierce.textContent = String(b.pierces);
+        mArea.textContent = `${b.area_m2.toFixed(6)} м²`;
+        mArea2.textContent = `${b.area_mm2.toFixed(3)} мм²`;
+        mTotal.textContent = `${m.price_total_batch.toFixed(2)} грн`;
+
+        lastShapes = data.preview.shapes || [];
+        drawPreview(lastShapes);
+
+        showOk(`Готово: заявка сохранена в orders.csv | ${metalGrade} ${metalThickness} мм | Кол-во: ${quantity}`);
+        setStatus('Done');
+      } catch (err) {
+        showError(err.message || 'Ошибка расчёта');
+        setStatus('Error');
+      } finally {
+        calcBtn.disabled = false;
+      }
+    });
+
+    drawPreview([]);
+    loadCatalog();
+  </script>
+</body>
+</html>

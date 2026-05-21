@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "laser-calc"
+version = "0.1.0"
+description = "DXF laser cutting calculator with HTTP API"
+requires-python = ">=3.12"
+dependencies = [
+    "ezdxf>=1.0",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "gunicorn>=21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/laser_calc", "src/laser_calc_api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = [
+    "web_app.py",
+    "laser_calc_gui.py",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Calculation core uses legacy typing aliases (Dict, List, Optional, Tuple).
+# Logic and numeric behavior must not be modified — typing-only modernization
+# is intentionally skipped here.
+"src/laser_calc/__init__.py" = ["UP006", "UP035", "UP045"]
+
+[tool.ruff.format]
+# Calculation core is intentionally untouched. Whitespace and quote-style
+# changes here would create noise without behavior impact.
+exclude = ["src/laser_calc/__init__.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning:ezdxf.*",
+    "ignore::DeprecationWarning:pyparsing.*",
+]

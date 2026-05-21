@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: .
+    image: laser-calc-api:latest
+    container_name: laser-calc-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    # Pin in-container paths to /app/* — defaults that work in editable
+    # installs point at the venv root inside the container, which is read-only.
+    environment:
+      - PRICES_CATALOG_PATH=/app/prices_catalog.json
+      - ORDERS_CSV_PATH=/app/orders.csv
+      - WEB_DIR=/app/web
+    # Bind-mount mutable data so the host can edit prices and read orders
+    # without entering the container. Both files must exist on the host
+    # before `docker compose up` (compose creates a directory otherwise).
+    volumes:
+      - ./prices_catalog.json:/app/prices_catalog.json:ro
+      - ./orders.csv:/app/orders.csv:rw
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/api/health', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
