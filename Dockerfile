@@ -26,7 +26,10 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH" \
+    ORDERS_CSV_PATH=/app/orders.csv \
+    PRICES_CATALOG_PATH=/app/prices_catalog.json \
+    WEB_DIR=/app/web
 
 # Non-root user
 RUN useradd --create-home --uid 1000 app
