@@ -194,6 +194,7 @@ def _sanitize_csv_cell(value: object) -> str:
 
 
 def append_order_csv(path: Path, row: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     file_exists = path.exists()
     with path.open("a", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=ORDERS_CSV_HEADERS)
