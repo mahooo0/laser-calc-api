@@ -165,6 +165,40 @@ def test_calculate_rejects_overlong_phone(client, sample_dxf: Path) -> None:
     assert "Phone" in resp.get_json()["error"]
 
 
+@pytest.mark.parametrize(
+    "bad_phone",
+    ["+380", "abc", "12345", "+38067111223", "+3806711122334", "+49 151 23456789"],
+)
+def test_calculate_rejects_non_ukrainian_phone(client, sample_dxf: Path, bad_phone: str) -> None:
+    payload = _multipart(sample_dxf, phone=bad_phone)
+    resp = client.post("/api/calculate", data=payload, content_type="multipart/form-data")
+    assert resp.status_code == 400
+    assert "Ukrainian" in resp.get_json()["error"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "canonical"),
+    [
+        ("+380671112233", "+380671112233"),
+        ("380671112233", "+380671112233"),
+        ("0671112233", "+380671112233"),
+        ("+38 (067) 111-22-33", "+380671112233"),
+        ("067 111 22 33", "+380671112233"),
+    ],
+)
+def test_calculate_normalizes_ukrainian_phone(
+    client, app, sample_dxf: Path, raw: str, canonical: str
+) -> None:
+    payload = _multipart(sample_dxf, phone=raw)
+    resp = client.post("/api/calculate", data=payload, content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["client"]["phone"] == canonical
+    # The canonical form is what gets persisted to orders.csv.
+    orders_path = Path(app.config["ORDERS_PATH"])
+    last_row = list(csv.DictReader(orders_path.open(encoding="utf-8-sig")))[-1]
+    assert last_row["phone"] == canonical
+
+
 def test_calculate_rejects_excessive_quantity(client, sample_dxf: Path) -> None:
     payload = _multipart(sample_dxf, quantity="999999999")
     resp = client.post("/api/calculate", data=payload, content_type="multipart/form-data")

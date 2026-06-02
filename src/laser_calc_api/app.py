@@ -36,8 +36,26 @@ MAX_QUANTITY = 100_000
 MAX_PHONE_LENGTH = 32
 MAX_NAME_LENGTH = 200
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_NON_DIGITS_RE = re.compile(r"\D+")
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_ua_phone(raw: str) -> str | None:
+    """Validate a Ukrainian phone and return it canonicalised as +380XXXXXXXXX.
+
+    Accepts the two real-world input shapes — local ``0XXXXXXXXX`` (10 digits)
+    and international ``+380XXXXXXXXX`` / ``380XXXXXXXXX`` (12 digits) — ignoring
+    any spaces, dashes or parentheses the user typed. Returns ``None`` for
+    anything else so the caller can reject it. National significant number is
+    always 9 digits after the operator code, hence the 10/12 length checks.
+    """
+    digits = _NON_DIGITS_RE.sub("", raw)
+    if len(digits) == 10 and digits.startswith("0"):
+        return "+380" + digits[1:]
+    if len(digits) == 12 and digits.startswith("380"):
+        return "+" + digits
+    return None
 
 
 def create_app(
@@ -168,6 +186,10 @@ def _handle_calculate(prices_path: Path, orders_path: Path, notifier: TelegramNo
         return _bad_request("Phone is required")
     if len(phone) > MAX_PHONE_LENGTH:
         return _bad_request(f"Phone must be {MAX_PHONE_LENGTH} characters or less")
+    normalized_phone = normalize_ua_phone(phone)
+    if normalized_phone is None:
+        return _bad_request("Phone must be a Ukrainian number, e.g. +380XXXXXXXXX")
+    phone = normalized_phone
     if not email:
         return _bad_request("Email is required")
     if not EMAIL_RE.match(email):
@@ -281,7 +303,14 @@ def _handle_calculate(prices_path: Path, orders_path: Path, notifier: TelegramNo
         )
 
         try:
-            notifier.notify(order_notification_from_payload(payload))
+            # temp_path still exists here — the finally block removes it only
+            # after we return, so the DXF can ride along to Telegram as a
+            # document. Nothing is kept on disk: the chat is the archive.
+            notifier.notify(
+                order_notification_from_payload(payload),
+                document_path=temp_path,
+                document_name=file_name,
+            )
         except Exception:
             # TelegramNotifier swallows its own errors; this catches anything
             # that slips past (programming bugs, malformed payload).
