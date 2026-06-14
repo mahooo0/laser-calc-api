@@ -1,7 +1,0 @@
-﻿created_at_utc,file_name,client_name,company_name,phone,email,metal_grade,metal_thickness_mm,quantity,price_meter,price_pierce,material_m2,cut_length_m_per_part,pierces_per_part,area_m2_per_part,price_total_per_part,price_total_batch,status
-2026-03-04T00:00:04Z,Test 2010 dxf.dxf,Олександр,,+380995084078,ksasha2008@gmail.com,Ст3,1.0,1,20.0,1.8,740.0,0.771704,4,0.000393,22.92,22.92,new
-2026-03-04T00:03:58Z,Test 2010 dxf.dxf,123,,+380,,Ст3,1.0,1,20.0,1.8,740.0,0.771704,4,0.000393,22.92,22.92,new
-2026-03-04T00:09:46Z,Test 2010 dxf.dxf,Саня,,+380500533356,abc@gmail.com,Ст3,1.0,1,20.0,1.8,740.0,0.771704,4,0.000393,22.92,22.92,new
-2026-05-01T09:34:17Z,smoke.dxf,Docker Smoke,,+380501234567,smoke@example.com,Ст3,1.0,2,20.0,1.8,740.0,0.081416,3,0.000179,7.16,14.32,new
-2026-05-01T09:55:17Z,smoke.dxf,Scenario A,,+380501111111,a@example.com,Ст3,1.0,1,20.0,1.8,740.0,0.081416,3,0.000179,7.16,7.16,new
-2026-05-01T09:55:34Z,smoke.dxf,Scenario B,,+380502222222,b@example.com,Ст3,1.0,1,20.0,1.8,740.0,0.081416,3,0.000179,7.16,7.16,new
