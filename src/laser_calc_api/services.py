@@ -1,8 +1,11 @@
 """Pure helpers for the laser_calc HTTP layer.
 
-This module is the migration target for the helpers that previously lived
-inside web_app.py. Behavior is preserved verbatim — pricing math, CSV layout,
-catalog validation, and preview shape collection match the legacy implementation.
+Houses the helpers that back the Flask routes: CSV layout, catalog validation,
+preview shape collection, and the cutting-price math. Pricing follows the
+client's "Прайс порізка" sheet — a per-metre cut rate chosen by the batch's
+volume tier, with each pierce billed as its equivalent cut length. Material
+cost is left out until the client supplies a per-kg/per-m² price (see
+``price_coefficients`` and ``DEFAULT_PRICE_CATALOG``).
 """
 
 from __future__ import annotations
@@ -50,25 +53,61 @@ ORDERS_CSV_HEADERS: tuple[str, ...] = (
     "status",
 )
 
-DEFAULT_PRICE_CATALOG: dict[str, dict[str, dict[str, float]]] = {
+# Catalog shape: grade -> thickness -> tariff, where a tariff is:
+#   price_meter: [>=100, 50-100, 10-50, <10] м/п  (грн з ПДВ, cut price by volume tier)
+#   feed_mm_min: cutting feed, used to price each pierce as equivalent cut length
+#   pierce_time_s: pierce duration
+#   material_m2: optional metal cost per m² (0 = not priced; the source sheet has
+#     no per-kg metal price, so cutting-only until the client supplies one)
+Tariff = dict[str, Any]
+Catalog = dict[str, dict[str, Tariff]]
+
+# Volume tier thresholds (running metres of cut in the batch), descending.
+# total_cut_m >= 100 -> index 0; >= 50 -> 1; >= 10 -> 2; else -> 3.
+TIER_THRESHOLDS_M: tuple[float, ...] = (100.0, 50.0, 10.0)
+
+DEFAULT_PRICE_CATALOG: Catalog = {
     "Ст3": {
-        "1.0": {"price_meter": 20.0, "price_pierce": 1.8, "material_m2": 740.0},
-        "2.0": {"price_meter": 24.0, "price_pierce": 2.2, "material_m2": 920.0},
-        "3.0": {"price_meter": 28.0, "price_pierce": 2.7, "material_m2": 1150.0},
-        "4.0": {"price_meter": 34.0, "price_pierce": 3.2, "material_m2": 1420.0},
-        "6.0": {"price_meter": 44.0, "price_pierce": 4.2, "material_m2": 2060.0},
+        "1.0": {
+            "price_meter": [9.62, 11.4, 15.21, 22.82],
+            "feed_mm_min": 30000,
+            "pierce_time_s": 1.2,
+            "material_m2": 0,
+        },
+        "2.0": {
+            "price_meter": [19.22, 22.79, 30.38, 45.57],
+            "feed_mm_min": 12000,
+            "pierce_time_s": 1.4,
+            "material_m2": 0,
+        },
     },
     "Нерж AISI 304": {
-        "1.0": {"price_meter": 34.0, "price_pierce": 2.7, "material_m2": 1780.0},
-        "2.0": {"price_meter": 42.0, "price_pierce": 3.6, "material_m2": 2460.0},
-        "3.0": {"price_meter": 55.0, "price_pierce": 4.8, "material_m2": 3380.0},
-        "4.0": {"price_meter": 72.0, "price_pierce": 6.2, "material_m2": 4310.0},
+        "1.0": {
+            "price_meter": [25.1, 34.22, 45.64, 68.45],
+            "feed_mm_min": 35000,
+            "pierce_time_s": 1.1,
+            "material_m2": 0,
+        },
+        "2.0": {
+            "price_meter": [50.14, 68.36, 91.15, 136.72],
+            "feed_mm_min": 17000,
+            "pierce_time_s": 1.3,
+            "material_m2": 0,
+        },
     },
-    "Алюминий AMg": {
-        "2.0": {"price_meter": 38.0, "price_pierce": 3.1, "material_m2": 1670.0},
-        "3.0": {"price_meter": 46.0, "price_pierce": 3.9, "material_m2": 2140.0},
-        "4.0": {"price_meter": 59.0, "price_pierce": 5.0, "material_m2": 2790.0},
-        "6.0": {"price_meter": 79.0, "price_pierce": 6.6, "material_m2": 4020.0},
+    "Алюміній": {
+        "1.0": {
+            "price_meter": [18.36, 27.62, 36.82, 55.23],
+            "feed_mm_min": 35000,
+            "pierce_time_s": 1.1,
+            "material_m2": 0,
+        },
+        "2.0": {
+            "price_meter": [58.35, 87.53, 116.7, 175.05],
+            "feed_mm_min": 17000,
+            "pierce_time_s": 1.3,
+            "material_m2": 0,
+        },
     },
 }
 
@@ -111,7 +150,27 @@ def normalize_thickness_key(value: str) -> str:
     return normalized
 
 
-def validate_price_catalog(raw: dict[str, Any]) -> dict[str, dict[str, dict[str, float]]]:
+def _coerce_price_meter(value: Any) -> list[float]:
+    """Normalize price_meter into a 4-element tier list [>=100, 50-100, 10-50, <10].
+
+    A bare number is treated as a flat price (all tiers equal) so a future
+    fixed-price file from the client drops in without code changes.
+    """
+    if isinstance(value, bool):
+        raise ValueError("price_meter must be a number or list")
+    if isinstance(value, (int, float)):
+        return [float(value)] * 4
+    if isinstance(value, (list, tuple)):
+        nums = [float(x) for x in value]
+        if not nums:
+            raise ValueError("price_meter list is empty")
+        while len(nums) < 4:
+            nums.append(nums[-1])
+        return nums[:4]
+    raise ValueError("price_meter must be a number or list")
+
+
+def validate_price_catalog(raw: dict[str, Any]) -> Catalog:
     if not isinstance(raw, dict):
         raise ValueError("Price catalog must be an object")
     data = raw.get("grades", raw)
@@ -120,15 +179,15 @@ def validate_price_catalog(raw: dict[str, Any]) -> dict[str, dict[str, dict[str,
     if not data:
         raise ValueError("Price catalog is empty")
 
-    clean: dict[str, dict[str, dict[str, float]]] = {}
+    clean: Catalog = {}
     for grade, thickness_map in data.items():
         grade_name = str(grade).strip()
-        if grade_name == "":
+        if grade_name == "" or grade_name.startswith("_"):
             continue
         if not isinstance(thickness_map, dict):
             raise ValueError(f"Invalid grade section for: {grade_name}")
 
-        clean_thickness: dict[str, dict[str, float]] = {}
+        clean_thickness: dict[str, Tariff] = {}
         for thickness, tariff in thickness_map.items():
             key = normalize_thickness_key(str(thickness))
             if key == "":
@@ -137,9 +196,10 @@ def validate_price_catalog(raw: dict[str, Any]) -> dict[str, dict[str, dict[str,
                 raise ValueError(f"Invalid tariff for {grade_name} / {key}")
             try:
                 clean_thickness[key] = {
-                    "price_meter": float(tariff["price_meter"]),
-                    "price_pierce": float(tariff["price_pierce"]),
-                    "material_m2": float(tariff["material_m2"]),
+                    "price_meter": _coerce_price_meter(tariff["price_meter"]),
+                    "feed_mm_min": float(tariff.get("feed_mm_min", 0) or 0),
+                    "pierce_time_s": float(tariff.get("pierce_time_s", 0) or 0),
+                    "material_m2": float(tariff.get("material_m2", 0) or 0),
                 }
             except (KeyError, TypeError, ValueError) as ex:
                 raise ValueError(f"Invalid numeric tariff for {grade_name} / {key}") from ex
@@ -152,7 +212,7 @@ def validate_price_catalog(raw: dict[str, Any]) -> dict[str, dict[str, dict[str,
     return clean
 
 
-def load_price_catalog(path: Path) -> dict[str, dict[str, dict[str, float]]]:
+def load_price_catalog(path: Path) -> Catalog:
     if path.exists():
         try:
             with path.open("r", encoding="utf-8") as f:
@@ -165,7 +225,7 @@ def load_price_catalog(path: Path) -> dict[str, dict[str, dict[str, float]]]:
     return DEFAULT_PRICE_CATALOG
 
 
-def catalog_payload(price_catalog: dict[str, dict[str, dict[str, float]]]) -> dict[str, Any]:
+def catalog_payload(price_catalog: Catalog) -> dict[str, Any]:
     grades: list[dict[str, Any]] = []
     for grade, thickness_map in price_catalog.items():
         thicknesses = sorted(thickness_map.keys(), key=lambda x: float(x))
@@ -174,10 +234,10 @@ def catalog_payload(price_catalog: dict[str, dict[str, dict[str, float]]]) -> di
 
 
 def resolve_tariff(
-    price_catalog: dict[str, dict[str, dict[str, float]]],
+    price_catalog: Catalog,
     metal_grade: str,
     metal_thickness: str,
-) -> dict[str, float]:
+) -> Tariff:
     grade_map = price_catalog.get(metal_grade)
     if not grade_map:
         raise ValueError("Unknown metal grade")
@@ -188,13 +248,47 @@ def resolve_tariff(
     return tariff
 
 
+def select_tier_index(total_cut_m: float) -> int:
+    """Pick the volume tier (index into price_meter[]) from total batch metres."""
+    for index, threshold in enumerate(TIER_THRESHOLDS_M):
+        if total_cut_m >= threshold:
+            return index
+    return len(TIER_THRESHOLDS_M)
+
+
+def price_coefficients(tariff: Tariff, total_cut_m: float) -> dict[str, float]:
+    """Resolve the per-part pricing coefficients for a given batch volume.
+
+    Returns the same three coefficients the legacy flat formula expects, so the
+    cost stays ``cut_m·price_meter + pierces·price_pierce + area_m2·material_m2``:
+
+    * ``price_meter`` — the cut rate for the volume tier the batch falls into.
+    * ``price_pierce`` — each pierce billed as its equivalent cut length
+      (``pierce_time_s × feed_mm_min``) at that tier's rate. Zero when the source
+      sheet has no feed/pierce data for the material.
+    * ``material_m2`` — metal cost per m² (0 until the client supplies one).
+    """
+    prices = _coerce_price_meter(tariff["price_meter"])
+    tier = select_tier_index(total_cut_m)
+    price_meter = prices[tier]
+    feed = float(tariff.get("feed_mm_min", 0.0) or 0.0)
+    pierce_time = float(tariff.get("pierce_time_s", 0.0) or 0.0)
+    pierce_equiv_m = pierce_time * feed / 60.0 / 1000.0
+    return {
+        "price_meter": price_meter,
+        "price_pierce": pierce_equiv_m * price_meter,
+        "material_m2": float(tariff.get("material_m2", 0.0) or 0.0),
+        "tier_index": float(tier),
+        "pierce_equiv_m": pierce_equiv_m,
+    }
+
+
 def _sanitize_csv_cell(value: object) -> str:
     text = str(value if value is not None else "").strip()
     return " ".join(text.splitlines())
 
 
 def append_order_csv(path: Path, row: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     file_exists = path.exists()
     with path.open("a", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=ORDERS_CSV_HEADERS)

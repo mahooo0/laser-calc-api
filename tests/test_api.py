@@ -13,13 +13,29 @@ import pytest
 from laser_calc_api.app import create_app
 from laser_calc_api.services import DEFAULT_PRICE_CATALOG
 
-CATALOG_FIXTURE: dict[str, dict[str, dict[str, float]]] = {
+CATALOG_FIXTURE: dict[str, dict[str, dict[str, object]]] = {
     "Ст3": {
-        "1.0": {"price_meter": 20.0, "price_pierce": 1.8, "material_m2": 740.0},
-        "2.0": {"price_meter": 24.0, "price_pierce": 2.2, "material_m2": 920.0},
+        # price_meter tiers: [>=100, 50-100, 10-50, <10] м/п
+        "1.0": {
+            "price_meter": [10.0, 12.0, 16.0, 24.0],
+            "feed_mm_min": 30000,
+            "pierce_time_s": 1.0,
+            "material_m2": 0,
+        },
+        "2.0": {
+            "price_meter": [12.0, 14.0, 18.0, 26.0],
+            "feed_mm_min": 12000,
+            "pierce_time_s": 1.4,
+            "material_m2": 0,
+        },
     },
     "Алюминий AMg": {
-        "3.0": {"price_meter": 46.0, "price_pierce": 3.9, "material_m2": 2140.0},
+        "3.0": {
+            "price_meter": [40.0, 50.0, 65.0, 90.0],
+            "feed_mm_min": 17000,
+            "pierce_time_s": 1.3,
+            "material_m2": 0,
+        },
     },
 }
 
@@ -260,9 +276,11 @@ def test_calculate_happy_path_pricing_snapshot(client, app, sample_dxf: Path) ->
     cut_m_expected = cut_length_mm_expected / 1000.0
     area_m2_expected = area_mm2_expected / 1_000_000.0
     pierces_expected = 3
-    price_meter = 20.0
-    price_pierce = 1.8
-    material_m2 = 740.0
+    # Batch total cut length (~0.16 m) lands in the smallest-volume tier (<10 м/п).
+    price_meter = 24.0  # Ст3 1.0 tier[3]
+    pierce_equiv_m = 1.0 * 30000 / 60 / 1000  # pierce_time_s * feed_mm_min -> 0.5 m
+    price_pierce = pierce_equiv_m * price_meter  # 12.0 грн per pierce
+    material_m2 = 0.0  # no metal cost in source sheet
     per_part_expected = (
         cut_m_expected * price_meter
         + pierces_expected * price_pierce
@@ -276,6 +294,11 @@ def test_calculate_happy_path_pricing_snapshot(client, app, sample_dxf: Path) ->
     assert metrics["pierces"] == pierces_expected
     assert metrics["price_total_per_part"] == pytest.approx(per_part_expected, rel=1e-6)
     assert metrics["price_total_batch"] == pytest.approx(batch_expected, rel=1e-6)
+
+    tariff = body["material"]["tariff"]
+    assert tariff["volume_tier"] == 3
+    assert tariff["price_meter"] == pytest.approx(price_meter)
+    assert tariff["price_pierce"] == pytest.approx(price_pierce)
 
     assert body["batch_metrics"]["pierces"] == pierces_expected * 2
     assert body["preview"]["shape_count"] >= 2
@@ -292,6 +315,42 @@ def test_calculate_happy_path_pricing_snapshot(client, app, sample_dxf: Path) ->
     assert row["status"] == "new"
     assert row["pierces_per_part"] == str(pierces_expected)
     assert float(row["price_total_batch"]) == pytest.approx(round(batch_expected, 2), abs=0.01)
+
+
+@pytest.fixture
+def empty_dxf(tmp_path: Path) -> Path:
+    """Valid DXF with no cuttable entities (empty modelspace)."""
+    import ezdxf
+
+    doc = ezdxf.new(setup=True)
+    doc.units = 4  # MM
+    doc.modelspace()  # no entities added
+    path = tmp_path / "empty.dxf"
+    doc.saveas(path)
+    return path
+
+
+def test_calculate_rejects_geometryless_dxf(client, app, empty_dxf: Path) -> None:
+    payload = _multipart(empty_dxf)
+    resp = client.post("/api/calculate", data=payload, content_type="multipart/form-data")
+    assert resp.status_code == 400
+    assert "geometry" in resp.get_json()["error"].lower()
+    # No phantom 0-грн order should be persisted (nor pushed to Telegram).
+    orders_path: Path = app.config["_ORDERS_PATH"]
+    assert not orders_path.exists()
+
+
+def test_calculate_applies_volume_tier_discount(client, app, sample_dxf: Path) -> None:
+    # cut length per part ~0.0814 m; quantity 200 -> ~16.3 m total -> tier index 2 (10-50 м/п).
+    payload = _multipart(sample_dxf, metal_grade="Ст3", metal_thickness="1.0", quantity="200")
+    resp = client.post("/api/calculate", data=payload, content_type="multipart/form-data")
+
+    assert resp.status_code == 200
+    tariff = resp.get_json()["material"]["tariff"]
+    assert tariff["volume_tier"] == 2
+    assert tariff["price_meter"] == pytest.approx(
+        16.0
+    )  # Ст3 1.0 tier[2], cheaper than the <10 rate
 
 
 def test_calculate_appends_subsequent_orders(client, app, sample_dxf: Path) -> None:

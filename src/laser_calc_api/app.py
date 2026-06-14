@@ -26,6 +26,7 @@ from .services import (
     catalog_payload,
     collect_preview_shapes,
     load_price_catalog,
+    price_coefficients,
     resolve_tariff,
     safe_float,
     safe_int,
@@ -201,20 +202,30 @@ def _handle_calculate(prices_path: Path, orders_path: Path, notifier: TelegramNo
     temp_path: str | None = None
     try:
         price_catalog = load_price_catalog(prices_path)
+        # Validate grade/thickness up front; the volume-tier rate is resolved
+        # below once we know the batch's total cut length.
         tariff = resolve_tariff(price_catalog, metal_grade, metal_thickness)
-        price_meter = float(tariff["price_meter"])
-        price_pierce = float(tariff["price_pierce"])
-        material_m2 = float(tariff["material_m2"])
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp:
             temp_path = tmp.name
             tmp.write(data)
 
         stats, factor = calculate(temp_path, tol=tol, cut_layers=cut_layers)
+        # Reject geometry-less uploads (empty drawing, or a cut-layer filter that
+        # matched nothing) before booking a 0-грн phantom order to CSV/Telegram.
+        if stats.cut_length_mm <= 0 and stats.pierces <= 0:
+            return _bad_request(
+                "No cuttable geometry found in the DXF (check the cut layer and units)"
+            )
+
         shapes = collect_preview_shapes(temp_path, tol=tol, cut_layers=cut_layers)
 
         cut_m = stats.cut_length_mm / 1000.0
         area_m2 = stats.area_mm2 / 1_000_000.0
+        coeffs = price_coefficients(tariff, cut_m * quantity)
+        price_meter = coeffs["price_meter"]
+        price_pierce = coeffs["price_pierce"]
+        material_m2 = coeffs["material_m2"]
         total_per_part = cut_m * price_meter + stats.pierces * price_pierce + area_m2 * material_m2
         total_batch = total_per_part * quantity
         created_at = datetime.now(UTC).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
@@ -262,6 +273,8 @@ def _handle_calculate(prices_path: Path, orders_path: Path, notifier: TelegramNo
                     "price_meter": price_meter,
                     "price_pierce": price_pierce,
                     "material_m2": material_m2,
+                    "volume_tier": int(coeffs["tier_index"]),
+                    "pierce_equiv_m": round(coeffs["pierce_equiv_m"], 6),
                 },
             },
             "metrics": {
